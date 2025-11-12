@@ -21,6 +21,6 @@ stages:
       displayName: 'Installer Ansible et pywinrm'
 
     - script: |
-        echo "Exécution du playbook Ansible sur plusieurs serveurs Windows..."
-        ansible-playbook -i inventory_windows.yml uninstall_programs_multi.yml
-      displayName: 'Exécuter le playbook sur tous les serveurs'
+        echo "Exécution du playbook Ansible sur plusieurs serveurs Windows en parallèle..."
+        ansible-playbook -i inventory_windows.yml uninstall_programs_parallel.yml -f 10
+      displayName: 'Exécuter le playbook en parallèle'

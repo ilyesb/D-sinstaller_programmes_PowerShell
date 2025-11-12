@@ -1,0 +1,26 @@
+trigger:
+- main
+
+pool:
+  name: 'VS2019'
+
+stages:
+- stage: UninstallPrograms
+  jobs:
+  - job: RunAnsible
+    displayName: "Désinstaller les programmes sur plusieurs serveurs Windows"
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install ansible pywinrm
+      displayName: 'Installer Ansible et pywinrm'
+
+    - script: |
+        echo "Exécution du playbook Ansible sur plusieurs serveurs Windows..."
+        ansible-playbook -i inventory_windows.yml uninstall_programs_multi.yml
+      displayName: 'Exécuter le playbook sur tous les serveurs'

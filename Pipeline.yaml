@@ -1,0 +1,20 @@
+trigger: none  # exécution manuelle
+
+name: Désinstallation_SingleJob
+
+pool:
+  name: 'vs2019'      # ton pool self-hosted
+  demands:
+    - Agent.OS -equals Windows_NT
+
+steps:
+- checkout: self
+
+- task: PowerShell@2
+  displayName: "🚀 Exécution du script de désinstallation"
+  inputs:
+    targetType: 'filePath'
+    filePath: 'scripts/Uninstall-Programs.ps1'
+    pwsh: false
+    errorActionPreference: 'stop'
+    failOnStderr: true

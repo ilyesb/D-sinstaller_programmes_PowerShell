@@ -1,7 +1,8 @@
 ---
-- name: Désinstaller des programmes sur plusieurs serveurs Windows
+- name: Désinstaller des programmes sur plusieurs serveurs Windows en parallèle
   hosts: all
   gather_facts: yes
+  strategy: free   # exécute les tâches sur tous les hôtes en parallèle
 
   vars:
     programs_to_remove:

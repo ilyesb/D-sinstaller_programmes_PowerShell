@@ -1,0 +1,57 @@
+---
+- name: Désinstaller des programmes sur plusieurs serveurs Windows
+  hosts: all
+  gather_facts: yes
+
+  vars:
+    programs_to_remove:
+      - name: "Google Chrome"
+        uninstall_type: "msi"
+      - name: "Mozilla Firefox"
+        uninstall_type: "msi"
+      - name: "7-Zip 22.0 (x64 edition)"
+        uninstall_type: "exe"
+        uninstall_command: '"C:\Program Files\7-Zip\Uninstall.exe" /S'
+
+  tasks:
+
+    - name: Obtenir les programmes MSI installés
+      win_shell: |
+        Get-WmiObject -Class Win32_Product | Select-Object Name, IdentifyingNumber | ConvertTo-Json
+      register: installed_msi
+      changed_when: false
+
+    - name: Boucler sur chaque programme
+      vars:
+        installed_programs: "{{ installed_msi.stdout | from_json }}"
+      win_shell: |
+        $program = '{{ item.name }}'
+        $type = '{{ item.uninstall_type }}'
+        if ($type -eq 'msi') {
+            $app = $installed_programs | Where-Object { $_.Name -eq $program }
+            if ($app) {
+                Write-Host "[$env:COMPUTERNAME] Désinstallation MSI de $program..."
+                $exit = Start-Process msiexec.exe -ArgumentList "/x $($app.IdentifyingNumber) /qn /norestart" -Wait -PassThru
+                if ($exit.ExitCode -eq 0) {
+                    Write-Host "[$env:COMPUTERNAME] $program désinstallé avec succès."
+                } else {
+                    Write-Host "[$env:COMPUTERNAME] Erreur lors de la désinstallation de $program. Code: $($exit.ExitCode)"
+                }
+            } else {
+                Write-Host "[$env:COMPUTERNAME] $program n'est pas installé."
+            }
+        } elseif ($type -eq 'exe') {
+            $cmd = '{{ item.uninstall_command }}'
+            if (Test-Path ($cmd -replace '\"','')) {
+                Write-Host "[$env:COMPUTERNAME] Désinstallation EXE de $program..."
+                $exit = Start-Process cmd.exe -ArgumentList "/c $cmd" -Wait -PassThru
+                if ($exit.ExitCode -eq 0) {
+                    Write-Host "[$env:COMPUTERNAME] $program désinstallé avec succès."
+                } else {
+                    Write-Host "[$env:COMPUTERNAME] Erreur lors de la désinstallation de $program. Code: $($exit.ExitCode)"
+                }
+            } else {
+                Write-Host "[$env:COMPUTERNAME] Fichier de désinstallation pour $program introuvable. Vérifier le chemin."
+            }
+        }
+      loop: "{{ programs_to_remove }}"

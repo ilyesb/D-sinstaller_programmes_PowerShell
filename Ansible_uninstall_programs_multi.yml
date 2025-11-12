@@ -1,8 +1,8 @@
 ---
-- name: Désinstaller des programmes sur plusieurs serveurs Windows en parallèle
+- name: Désinstaller des programmes sur plusieurs serveurs Windows avec résumé
   hosts: all
   gather_facts: yes
-  strategy: free   # exécute les tâches sur tous les hôtes en parallèle
+  strategy: free  # exécute en parallèle sur tous les hôtes
 
   vars:
     programs_to_remove:
@@ -16,30 +16,42 @@
 
   tasks:
 
+    - name: Initialiser la variable de résumé
+      set_fact:
+        uninstall_summary: []
+
     - name: Obtenir les programmes MSI installés
       win_shell: |
         Get-WmiObject -Class Win32_Product | Select-Object Name, IdentifyingNumber | ConvertTo-Json
       register: installed_msi
       changed_when: false
 
-    - name: Boucler sur chaque programme
+    - name: Boucler sur chaque programme et désinstaller
       vars:
         installed_programs: "{{ installed_msi.stdout | from_json }}"
       win_shell: |
         $program = '{{ item.name }}'
         $type = '{{ item.uninstall_type }}'
+        $summary = @{}
+        $summary['Machine'] = $env:COMPUTERNAME
+        $summary['Programme'] = $program
+        $summary['Type'] = $type
+        $summary['Message'] = ''
         if ($type -eq 'msi') {
             $app = $installed_programs | Where-Object { $_.Name -eq $program }
             if ($app) {
                 Write-Host "[$env:COMPUTERNAME] Désinstallation MSI de $program..."
                 $exit = Start-Process msiexec.exe -ArgumentList "/x $($app.IdentifyingNumber) /qn /norestart" -Wait -PassThru
                 if ($exit.ExitCode -eq 0) {
-                    Write-Host "[$env:COMPUTERNAME] $program désinstallé avec succès."
+                    $summary['Status'] = 'Succès'
+                    $summary['Message'] = 'Désinstallation réussie'
                 } else {
-                    Write-Host "[$env:COMPUTERNAME] Erreur lors de la désinstallation de $program. Code: $($exit.ExitCode)"
+                    $summary['Status'] = 'Erreur'
+                    $summary['Message'] = "Code $($exit.ExitCode)"
                 }
             } else {
-                Write-Host "[$env:COMPUTERNAME] $program n'est pas installé."
+                $summary['Status'] = 'Non installé'
+                $summary['Message'] = 'Programme non trouvé'
             }
         } elseif ($type -eq 'exe') {
             $cmd = '{{ item.uninstall_command }}'
@@ -47,12 +59,32 @@
                 Write-Host "[$env:COMPUTERNAME] Désinstallation EXE de $program..."
                 $exit = Start-Process cmd.exe -ArgumentList "/c $cmd" -Wait -PassThru
                 if ($exit.ExitCode -eq 0) {
-                    Write-Host "[$env:COMPUTERNAME] $program désinstallé avec succès."
+                    $summary['Status'] = 'Succès'
+                    $summary['Message'] = 'Désinstallation réussie'
                 } else {
-                    Write-Host "[$env:COMPUTERNAME] Erreur lors de la désinstallation de $program. Code: $($exit.ExitCode)"
+                    $summary['Status'] = 'Erreur'
+                    $summary['Message'] = "Code $($exit.ExitCode)"
                 }
             } else {
-                Write-Host "[$env:COMPUTERNAME] Fichier de désinstallation pour $program introuvable. Vérifier le chemin."
+                $summary['Status'] = 'Non installé'
+                $summary['Message'] = 'Fichier de désinstallation introuvable'
             }
         }
+        $summary | ConvertTo-Json
       loop: "{{ programs_to_remove }}"
+      register: uninstall_results
+
+    - name: Ajouter les résultats au résumé
+      set_fact:
+        uninstall_summary: "{{ uninstall_summary + [ item.stdout | from_json ] }}"
+      loop: "{{ uninstall_results.results }}"
+
+    - name: Afficher le résumé final
+      debug:
+        msg: |
+          ============================
+          Résumé des désinstallations :
+          {% for entry in uninstall_summary %}
+          Machine: {{ entry.Machine }} | Programme: {{ entry.Programme }} | Type: {{ entry.Type }} | Statut: {{ entry.Status }} | Message: {{ entry.Message }}
+          {% endfor %}
+          ============================
